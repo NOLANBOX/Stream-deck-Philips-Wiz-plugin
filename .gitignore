@@ -1,0 +1,12 @@
+# Node.js
+node_modules/
+coverage/
+
+# Stream Deck build output
+*.sdPlugin/bin/
+*.sdPlugin/logs/
+dist/
+
+# Editors and operating systems
+.DS_Store
+*.swp

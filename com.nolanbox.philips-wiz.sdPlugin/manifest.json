@@ -1,0 +1,53 @@
+{
+  "Name": "Philips WiZ Control",
+  "Version": "0.1.0.0",
+  "Author": "NOLANBOX",
+  "Actions": [
+    {
+      "Name": "Lumière WiZ",
+      "UUID": "com.nolanbox.philips-wiz.light",
+      "Icon": "imgs/actions/light/icon",
+      "Tooltip": "Contrôle une ampoule Philips WiZ sur le réseau local.",
+      "PropertyInspectorPath": "ui/light-control.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/light/key-off",
+          "TitleAlignment": "bottom",
+          "FontSize": 13
+        },
+        {
+          "Image": "imgs/actions/light/key-on",
+          "TitleAlignment": "bottom",
+          "FontSize": 13
+        }
+      ]
+    }
+  ],
+  "Category": "Philips WiZ Control",
+  "CategoryIcon": "imgs/plugin/category-icon",
+  "CodePath": "bin/plugin.js",
+  "Description": "Contrôlez vos ampoules Philips WiZ depuis votre Stream Deck.",
+  "Icon": "imgs/plugin/marketplace",
+  "SDKVersion": 3,
+  "Software": {
+    "MinimumVersion": "7.1"
+  },
+  "OS": [
+    {
+      "Platform": "mac",
+      "MinimumVersion": "12"
+    },
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Nodejs": {
+    "Version": "24",
+    "Debug": "enabled"
+  },
+  "UUID": "com.nolanbox.philips-wiz"
+}

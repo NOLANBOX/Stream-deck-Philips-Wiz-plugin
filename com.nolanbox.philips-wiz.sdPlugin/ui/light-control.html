@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Réglages de la lumière WiZ</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 13px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 14px 12px 20px;
+        color: #e8ecf1;
+        background: #2d2d2d;
+      }
+
+      .field {
+        display: grid;
+        grid-template-columns: 112px 1fr;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      label {
+        color: #c7c7c7;
+        text-align: right;
+      }
+
+      input,
+      select {
+        width: 100%;
+        min-width: 0;
+        height: 28px;
+        padding: 3px 7px;
+        color: #f7f7f7;
+        background: #3d3d3d;
+        border: 1px solid #565656;
+        border-radius: 4px;
+        outline: none;
+      }
+
+      input:focus,
+      select:focus {
+        border-color: #2ba8ff;
+        box-shadow: 0 0 0 1px #2ba8ff;
+      }
+
+      input.invalid {
+        border-color: #ff6961;
+      }
+
+      details {
+        margin-top: 14px;
+        padding-top: 10px;
+        border-top: 1px solid #484848;
+      }
+
+      summary {
+        margin-bottom: 12px;
+        color: #d8d8d8;
+        cursor: pointer;
+      }
+
+      .help {
+        margin: -4px 0 10px 122px;
+        color: #9e9e9e;
+        font-size: 11px;
+        line-height: 1.35;
+      }
+
+      #status {
+        min-height: 16px;
+        margin: 12px 0 0 122px;
+        color: #9fd6ff;
+        font-size: 11px;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="settings-form">
+      <div class="field">
+        <label for="host">Ampoule</label>
+        <input id="host" type="text" placeholder="192.168.1.42" autocomplete="off" />
+      </div>
+      <p class="help">Adresse IP fixe ou nom réseau de l’ampoule.</p>
+
+      <div class="field">
+        <label for="operation">Action</label>
+        <select id="operation">
+          <option value="toggle">Basculer marche / arrêt</option>
+          <option value="on">Allumer</option>
+          <option value="off">Éteindre</option>
+          <option value="brightness-up">Augmenter la luminosité</option>
+          <option value="brightness-down">Réduire la luminosité</option>
+          <option value="set-brightness">Fixer la luminosité</option>
+          <option value="warmer">Réchauffer la lumière</option>
+          <option value="cooler">Refroidir la lumière</option>
+          <option value="set-temperature">Fixer la température</option>
+        </select>
+      </div>
+
+      <div class="field conditional" data-operations="set-brightness">
+        <label for="brightness">Luminosité</label>
+        <input id="brightness" type="number" min="10" max="100" step="1" />
+      </div>
+
+      <div class="field conditional" data-operations="brightness-up,brightness-down">
+        <label for="brightnessStep">Pas</label>
+        <input id="brightnessStep" type="number" min="1" max="50" step="1" />
+      </div>
+
+      <div class="field conditional" data-operations="set-temperature">
+        <label for="temperature">Température</label>
+        <input id="temperature" type="number" min="2200" max="6500" step="50" />
+      </div>
+
+      <div class="field conditional" data-operations="warmer,cooler">
+        <label for="temperatureStep">Pas (K)</label>
+        <input id="temperatureStep" type="number" min="50" max="1000" step="50" />
+      </div>
+
+      <details>
+        <summary>Réglages avancés</summary>
+        <div class="field">
+          <label for="port">Port UDP</label>
+          <input id="port" type="number" min="1" max="65535" step="1" />
+        </div>
+        <div class="field">
+          <label for="signingKey">Clé WiZ</label>
+          <input
+            id="signingKey"
+            type="password"
+            maxlength="32"
+            pattern="[0-9a-fA-F]{32}"
+            placeholder="Facultative"
+            autocomplete="off"
+          />
+        </div>
+        <p class="help">32 caractères hexadécimaux, pour les firmwares qui exigent les commandes signées.</p>
+      </details>
+
+      <p id="status">En attente de Stream Deck…</p>
+    </form>
+
+    <script>
+      "use strict";
+
+      const defaults = {
+        host: "",
+        port: 38899,
+        operation: "toggle",
+        brightness: 50,
+        brightnessStep: 10,
+        temperature: 2700,
+        temperatureStep: 250,
+        signingKey: ""
+      };
+      const numberFields = new Set(["port", "brightness", "brightnessStep", "temperature", "temperatureStep"]);
+      let websocket;
+      let actionContext;
+      let saveTimer;
+
+      function byId(id) {
+        return document.getElementById(id);
+      }
+
+      function populate(settings) {
+        Object.keys(defaults).forEach(function (key) {
+          byId(key).value = settings[key] ?? defaults[key];
+        });
+        updateConditionalFields();
+      }
+
+      function readSettings() {
+        const settings = {};
+        Object.keys(defaults).forEach(function (key) {
+          const input = byId(key);
+          if (numberFields.has(key)) {
+            settings[key] = Number.isFinite(input.valueAsNumber) ? input.valueAsNumber : defaults[key];
+          } else {
+            settings[key] = input.value.trim();
+          }
+        });
+        settings.signingKey = settings.signingKey.toLowerCase();
+        return settings;
+      }
+
+      function updateConditionalFields() {
+        const operation = byId("operation").value;
+        document.querySelectorAll(".conditional").forEach(function (element) {
+          element.hidden = !element.dataset.operations.split(",").includes(operation);
+        });
+      }
+
+      function validateSigningKey() {
+        const input = byId("signingKey");
+        const valid = input.value === "" || /^[0-9a-f]{32}$/i.test(input.value);
+        input.classList.toggle("invalid", !valid);
+        byId("status").textContent = valid
+          ? websocket && websocket.readyState === WebSocket.OPEN
+            ? "Réglages enregistrés automatiquement."
+            : "En attente de Stream Deck…"
+          : "La clé doit contenir exactement 32 caractères hexadécimaux.";
+        return valid;
+      }
+
+      function saveSettings() {
+        if (!validateSigningKey() || !websocket || websocket.readyState !== WebSocket.OPEN) return;
+        websocket.send(
+          JSON.stringify({
+            event: "setSettings",
+            context: actionContext,
+            payload: readSettings()
+          })
+        );
+      }
+
+      function scheduleSave() {
+        updateConditionalFields();
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(saveSettings, 180);
+      }
+
+      document.querySelectorAll("input, select").forEach(function (element) {
+        element.addEventListener("input", scheduleSave);
+        element.addEventListener("change", scheduleSave);
+      });
+      byId("settings-form").addEventListener("submit", function (event) {
+        event.preventDefault();
+        saveSettings();
+      });
+
+      window.connectElgatoStreamDeckSocket = function (port, uuid, registerEvent, info, actionInfo) {
+        actionContext = uuid;
+        const action = JSON.parse(actionInfo);
+        populate(Object.assign({}, defaults, action.payload.settings || {}));
+
+        websocket = new WebSocket("ws://127.0.0.1:" + port);
+        websocket.addEventListener("open", function () {
+          websocket.send(JSON.stringify({ event: registerEvent, uuid: uuid }));
+          byId("status").textContent = "Réglages enregistrés automatiquement.";
+        });
+        websocket.addEventListener("close", function () {
+          byId("status").textContent = "Connexion à Stream Deck fermée.";
+        });
+      };
+
+      populate(defaults);
+    </script>
+  </body>
+</html>
